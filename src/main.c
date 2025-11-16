@@ -1,0 +1,333 @@
+// DEFINICIONES 
+// -----------------------------------------------------------------------------------------------
+#define F_CPU		16000000UL		//	Define etiqueta Fcpu = 16 MHz (p/calc. de retardos).
+
+// INCLUSION DE ARCHIVOS
+// -----------------------------------------------------------------------------------------------
+#include <avr/io.h>					//	Contiene definiciones est�ndares (puertos, etc.)
+#include <avr/interrupt.h>			//	Contiene macros para manejo de interrupciones.
+#include <util/delay.h>				//	Contiene macros para generar retardos.
+#include <stdio.h>
+
+
+// MACROS
+// -----------------------------------------------------------------------------------------------
+#define sbi(p,b)		p |= _BV(b)                // sbi(p,b) setea el bit b de p.
+#define cbi(p,b)		p &= ~(_BV(b))             // cbi(p,b) borra el bit b de p.
+#define tbi(p,b)		p ^= _BV(b)                // tbi(p,b) togglea el bit b de p.
+#define is_high(p,b)	(p & _BV(b)) == _BV(b)    // is_high(p,b) testea si el bit b de p es 1.
+#define is_low(p,b)		(p & _BV(b)) == 0         // is_low(p,b) testea si el bit b de p es 0 (devuelve 1). Devuelve 1 si el bit b de p es cero
+
+// DEFINICIONES
+// -----------------------------------------------------------------------------------------------
+#define	VPC1_2MS		65411				//	Valor de precarga para el Timer1 (modo Timer NORMAL free-running) interrup cada 2ms
+#define	TOP_T2				124								//  valor comparacion mi timer 0 para f=2k Hz.
+#define	TOP_T0				249								//  valor comparacion mi timer 0 para lograr 1ms.
+
+#define DEBOUNCE_DELAY  10  // Retardo para eliminar el rebote 10 ms
+
+// DEFINE PINES PARA MANEJO DEL LCD:
+// ---------------------------------------------------------------------------------------
+#define RS	eS_PORTB0			// Pin RS = PB0 (8) (Reset).
+#define EN	eS_PORTB1			// Pin EN = PB1 (9) (Enable).
+#define D4	eS_PORTB2			// Pin D4 = PB2 (10) (Data D4).
+#define D5	eS_PORTB3			// Pin D5 = PB3 (11) (Data D5).
+#define D6	eS_PORTB4			// Pin D6 = PB4 (12) (Data D6).
+#define D7	eS_PORTB5			// Pin D7 = PB5 (13) (Data D7).
+#include "lcd_2560.h"			// Contiene funciones para manejo del LCD.
+
+
+// BOTONES
+// -----------------------------------------------------------------------------------------------
+#define P1_ON_OFF   PD2      // prende y apaga baliza y entra y sale de modo config
+#define P2_CHANGE_CONFIG  PC1		            // pulsador P2, cambia de modo de configuracion
+
+
+// VARIABLES GLOBALES
+// -----------------------------------------------------------------------------------------------
+volatile uint8_t P1_debounce = 0; // este flag me permitira saber si tengo que calcular el antirrebote para P1
+volatile uint8_t P1_in_out_flag = 0; // flag para saber si apagar a los 5seg
+volatile uint16_t timer_P1_debounce = 0; //variable para contabilizar el tiempo de antirrebote de P1
+volatile uint16_t timer_P1_in_out_config = 0; //variable para contabilizar el tiempo para entrar o salir de modo config
+volatile uint16_t config_mode = 0; //por defecto no entra en config mode
+volatile uint16_t operation_mode = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
+
+volatile uint16_t changed_mode_flag = 1; //flag para saber cuando actulizar display AUXXX
+
+
+volatile uint8_t P1_baliza_flag = 0;
+volatile uint8_t P2_change_mode_flag = 0;
+
+volatile uint8_t last_state_P2 = 0;
+
+
+
+// FUNCIONES
+// -----------------------------------------------------------------------------------------------
+void initialization(){
+  DDRB = 0b111111; //define todos los puertos B (son 6)como salidas
+  PORTB = 0x00;
+
+  DDRD = 0b11110000; //define a los 4 ultimos puertos D como salidas
+  PORTD = 0x00;
+
+  DDRC  = 0x00; //puerto C como entrada de pulsadores
+  PORTC = 0x00; 
+
+  // === Configuración de interrupción externa INT0 ===
+  EICRA = 0x02;       // Configurar la interrupcion en el flanco de bajada.
+  EIMSK = 0x01;		  // Habilitar la interrupcion externa INT0.
+
+};
+
+void startupSequence(){
+  PORTD = 0b00000000; //pongo todo en 0 primero por si acaso
+
+  PORTD = 0b00100000; //prendo el transistor de los leds
+  _delay_ms(500);
+
+  PORTD = 0b00000000; // Apago para el transistor de los leds
+  _delay_ms(500);
+
+  PORTD = 0b00100000; //prendo el transistor de los leds
+  _delay_ms(500);
+
+  PORTD = 0b00000000; // Apago para el transistor de los leds
+  _delay_ms(500);
+};
+
+void inicioLCD()						// ESCRITURA INICIAL EN LCD
+{	Lcd4_Set_Cursor(1,0);				// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+	Lcd4_Write_String("Tec. Digitales 2");	// Escribe string.
+	Lcd4_Set_Cursor(2,0);				// Posiciona cursor en fila 2 (de 2), columna 0 (de 16).
+	Lcd4_Write_Char('O');				// Escribe caracter
+	Lcd4_Write_Char('K');				// Escribe caracter
+	_delay_ms(1000);					// Retarda 1s.
+	Lcd4_Clear();						// Borra el display.
+}
+
+void showLCD_config(){
+  switch (operation_mode){
+    case 0:
+      Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+      Lcd4_Write_String("Select M: Auto"); // Escribe string.
+      Lcd4_Set_Cursor(2,0);
+      Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+
+      _delay_ms(500);		// Retarda 2s.
+      Lcd4_Clear();			// Borra el display.
+      _delay_ms(500);		// Retarda 2s.
+    break;
+
+    case 1:
+      Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+      Lcd4_Write_String("Select M: N-OnOFf"); // Escribe string.
+      Lcd4_Set_Cursor(2,0);
+      Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+
+      _delay_ms(500);		// Retarda medio s.
+      Lcd4_Clear();			// Borra el display.
+      _delay_ms(500);		// Retarda medio s.
+    break;
+
+    case 2:
+      Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+      Lcd4_Write_String("Select M: N-T5"); // Escribe string.
+      Lcd4_Set_Cursor(2,0);
+      Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+
+      _delay_ms(500);		// Retarda 2s.
+      Lcd4_Clear();			// Borra el display.
+      _delay_ms(500);		// Retarda 2s.
+    break;
+    case 3:
+      Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+      Lcd4_Write_String("Select M: N-T10"); // Escribe string.
+      Lcd4_Set_Cursor(2,0);
+      Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+
+      _delay_ms(500);		// Retarda 2s.
+      Lcd4_Clear();			// Borra el display.
+      _delay_ms(500);		// Retarda 2s.
+    break;
+  }
+}
+
+void showLCD_WM(){
+  switch (operation_mode){
+    case 0:
+      if(changed_mode_flag){
+        Lcd4_Clear();			// Borra el display.
+        _delay_ms(250);		// Retarda 250 ms.
+        
+        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        Lcd4_Write_String("M: Automatico:"); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+        changed_mode_flag = 0;
+      }
+    break;
+
+    case 1:
+      if(changed_mode_flag){
+        Lcd4_Clear();			// Borra el display.
+        _delay_ms(250);		// Retarda 250 ms.
+
+        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        Lcd4_Write_String("M: Normal On-Off:"); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+        changed_mode_flag = 0;
+      }
+    break;
+
+    case 2:
+      if(changed_mode_flag){
+        Lcd4_Clear();			// Borra el display.
+        _delay_ms(250);		// Retarda 250 ms.
+
+        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        Lcd4_Write_String("M: Normal T5:"); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+        changed_mode_flag = 0;
+      }
+    break;
+    case 3:
+      if(changed_mode_flag){
+        Lcd4_Clear();			// Borra el display.
+        _delay_ms(250);		// Retarda 250 ms.
+
+        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        Lcd4_Write_String("M: Normal T10:"); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+        changed_mode_flag = 0;
+      }
+    break;
+  }
+}
+
+// TIMERS 
+void timer0_config(){
+  TCCR0A = 0x02;									// Modo CTC.
+	TCCR0B = 0x03;									//(03 Hexa) Prescaler N = 64.
+	TIMSK0 = 0x02;									// Habilita interrupcion por comparacion en comparador A.
+	OCR0A = TOP_T0;									 // Carga el valor de TOP con 249. T = (1+OCR0A)*N/16MHz = 1ms => OCR0A = TOPE = 249.
+};
+
+void timer2_config(){
+  TCCR2A = 0x23;									//(0x23 Hexa) Modo FAST PWN.
+	TCCR2B = 0x0C;									//(0x0c Hexa) Prescaler N = 64.
+	TIMSK2 = 0x00;									// Activa la interrupción por igualación en OC0A
+	OCR2A = TOP_T2;									 // Carga el valor de TOP con 124. T = (1+OCR0A)*N/16MHz = 1ms => OCR0A = TOPE = 124.
+  OCR2B = 62;
+};
+
+void confCONVAD(){            // Configuracion ADC	
+  DIDR0 = 0b00000001;				  // Desconecta la parte digital del pin PC0/ADC0.
+	ADMUX = 0b01000000;				  // Config. la ref. de tension pin AVCC (placa Arduino AVCC = Vcc = 5V o 3V).
+								              // Conversion AD de 10 bits (ADLAR = 0) y conversion del canal 0 (ADC0/PF0).
+	ADCSRB = 0b00000000;				// Modo free-running.
+	ADCSRA = 0b10000111;				// Habilita el ADC (bit ADEN=1) y prescaler del clk del ADC en 128.
+}
+
+//Servicio de (INT 0) Interrupcion externa para P1
+ISR(INT0_vect) {                       
+  // Rutina de interrupción externa INT0 para P1
+  //Si el boton 1 no esta presionado entro
+  if(is_low(PIND,P1_ON_OFF)){
+    EIMSK &= ~(1 << INT0); //dehabilito SOOOOLO!!!! la interrupcion INT0
+    P1_debounce = 1; // Ahora debo realiza el antirebote para P2
+    P1_in_out_flag = 1;  //Aca doy a saber que P1 fue presionado
+    timer_P1_debounce = 0; //con esto contabilizo los ms del antirebote
+    timer_P1_in_out_config = 0; //variable para contabilizar el tiempo para entrar o salir de modo config
+  }
+}
+
+//Sirvicio de interrupcion TIMER 0
+ISR (TIMER0_COMPA_vect){								// RSI por comparacion del Timer0 con OCR0A (interrumpe cada 1 ms).
+  if(P1_in_out_flag){ // si esta flag esta activa se que tengo que entrar o salir del modo config
+    timer_P1_in_out_config++;
+    if (timer_P1_in_out_config == 2000){ 								// si contador = 5000 (ms) = (5 s)
+			if (is_low(PIND, P1_ON_OFF)){ //si esta presionado P1 despues de 10ms...
+        if(P1_in_out_flag){ // si esta dentro de config salgo y si estoy afuera entro en modo config
+          config_mode = !config_mode;
+        }  
+      }
+			timer_P1_in_out_config = 0;						// reset flag de apagado de P2
+      P1_in_out_flag = 0; //lo prendo directamente
+
+		}
+  }
+}
+
+// PROGRAMA PRINCIPAL
+//-----------------------------------------------------------------------------------------------
+int main(void){
+  // INICIALIZACION
+  //-----------------------------------------------------------------------------------------------
+    initialization();
+    startupSequence();
+    timer0_config();
+
+    Lcd4_Init();				// Inicializa el LCD (debe estar antes de escribir x 1ra vez en el LCD).
+    inicioLCD();				// Inicializa el LCD (siempre debe estar antes de usar el LCD).
+    Lcd4_Clear();				// Borra el display.
+    // Habilitar interrupciones globales
+    sei();
+
+    //BUCLE PRINCIPAL
+    //-----------------------------------------------------------------------------------------------
+    
+    while(1){
+      //SECUENCIA INICIAL
+      //-----------------------------------------------------------------------------------------------
+      Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+      Lcd4_Write_String("Experiencia 1:"); // Escribe string.
+      Lcd4_Set_Cursor(2,0);
+      Lcd4_Write_String("Baliza LED"); // Escribe string.
+
+      _delay_ms(500);		// Retarda 2s.
+      Lcd4_Clear();			// Borra el display.
+      _delay_ms(500);		// Retarda 2s.
+
+      //Modo config
+      //-----------------------------------------------------------------------------------------------
+      while(config_mode){
+        showLCD_config();
+        if(is_low(PINC, P2_CHANGE_CONFIG)){ 
+          _delay_ms(DEBOUNCE_DELAY);  // esperar para evitar el rebote
+          if(is_low(PINC, P2_CHANGE_CONFIG) && last_state_P2 == 0){ //si sigue abajo despues del delay y su estado anterior fue bajo pongo en alto
+            last_state_P2 = 1;
+            switch (operation_mode){
+              case 0:
+                operation_mode = 1;
+                changed_mode_flag=1;
+              break;
+              case 1:
+                operation_mode = 2;
+                changed_mode_flag=1;
+              break;
+                case 2:
+                operation_mode = 3;
+                changed_mode_flag=1;
+              break;
+              case 3:
+                operation_mode = 0;
+                changed_mode_flag=1;
+              break;
+            }
+          }
+        }else { // restablecer el estado cuando el boton no se esta presionando
+            last_state_P2 = 0;  
+        }
+      }
+
+      //Modo Baliza (entra por defecto)
+      //-----------------------------------------------------------------------------------------------
+      while(!config_mode){
+        showLCD_WM();
+      }   
+  }
+}
