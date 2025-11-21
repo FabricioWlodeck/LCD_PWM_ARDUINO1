@@ -8,6 +8,7 @@
 #include <avr/interrupt.h>			//	Contiene macros para manejo de interrupciones.
 #include <util/delay.h>				//	Contiene macros para generar retardos.
 #include <stdio.h>
+#include <stdlib.h>	
 
 
 // MACROS
@@ -50,8 +51,15 @@ volatile uint8_t P1_in_out_flag = 0; // flag para saber si apagar a los 5seg
 volatile uint16_t timer_P1_debounce = 0; //variable para contabilizar el tiempo de antirrebote de P1
 volatile uint16_t timer_P1_in_out_config = 0; //variable para contabilizar el tiempo para entrar o salir de modo config
 
+char buffer[16];
+char tiempo_temp[10];
+
+volatile uint16_t switch_channel = 3;
+
 volatile uint16_t v_ldr = 0; //c
+
 volatile uint16_t v_rv2 = 0; //c
+
 volatile uint16_t ADC_flag = 0; //nos indica si hay una nueva conversion
 volatile uint16_t duty_cycle_valor = 0;
 
@@ -60,6 +68,8 @@ volatile uint16_t timer_ADC = 0; //contador para actualizar el valor medido por 
 volatile uint16_t config_mode = 0; //por defecto no entra en config mode
 volatile uint16_t operation_mode = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
 volatile uint16_t time_on_leds = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
+volatile uint16_t time_leds_end = 0; //
+volatile uint16_t pwm_value = 0;
 
 
 volatile uint16_t changed_mode_flag = 1; //flag para saber cuando actulizar display AUXXX
@@ -80,7 +90,7 @@ void pinesConfig(){
   DDRB = 0b111111; //define todos los puertos B (son 6)como salidas
   PORTB = 0x00;
 
-  DDRD = 0b11110000; //define a los 4 ultimos puertos D como salidas
+  DDRD = 0b11111000; //define a los 4 ultimos puertos D como salidas, entre ellos mas import PD3 PWM
   PORTD = 0x00;
 
   DDRC  = 0x00; //puerto C como entrada de pulsadores
@@ -127,6 +137,18 @@ void inicioLCD()						// ESCRITURA INICIAL EN LCD
   _delay_ms(500);		// Retarda x s.
 }
 
+
+void mostrar_tiempo(int x,char *y){
+	float xseg = (float)x/1000;
+	sprintf(y, "%.2fs", xseg);
+}
+void mostrar_pwm(int x, char *y){		
+	float xpor = (float)x*100/124;
+	if(xpor>100) xpor = 100;
+	sprintf(y,"PWM al %.2f%%", xpor);		
+}
+
+
 void showLCD_config(uint16_t leds_time){
   switch (operation_mode){
     case 0:
@@ -169,6 +191,7 @@ void showLCD_config(uint16_t leds_time){
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("Select M: N-T5"); // Escribe string.
         
+        
         char lcd_buffer[17];
         sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
         Lcd4_Set_Cursor(2,0);
@@ -192,22 +215,39 @@ void showLCD_config(uint16_t leds_time){
       }
     break;
   }
-}
+};
 
-void showLCD_WM(uint16_t leds_time){
+ void showLCD_WM(uint16_t leds_time){
   switch (operation_mode){
     case 0:
       if(changed_mode_flag){
         Lcd4_Clear();			// Borra el display.
         _delay_ms(250);		// Retarda 250 ms.
         
-        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        /* Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("M: Automatico:"); // Escribe string.
 
-        char lcd_buffer[17];
-        sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
+        duty_cycle_valor = (long)v_rv2*124/1023;
+        mostrar_pwm(duty_cycle_valor, &buffer[0]);
+
+        
+        Lcd4_Write_String("T: ");
+				mostrar_tiempo(leds_time, tiempo_temp);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
+        Lcd4_Write_String(buffer);
+				Lcd4_Write_String(tiempo_temp); */
+
+        Lcd4_Set_Cursor(1,0);
+        Lcd4_Write_String("T5 ON -> ");
+        mostrar_tiempo(leds_time, tiempo_temp);
+        Lcd4_Set_Cursor(1,9);
+        Lcd4_Write_String(tiempo_temp);
+        duty_cycle_valor = (long)v_rv2*124/1023;
+        mostrar_pwm(duty_cycle_valor, &buffer[0]);
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String(buffer);
+        _delay_ms(100);
+        duty_cycle_valor = 0;        
         changed_mode_flag = 0;
       }
     break;
@@ -220,8 +260,11 @@ void showLCD_WM(uint16_t leds_time){
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("M: Normal On-Off:"); // Escribe string.
         
+        duty_cycle_valor = (long)v_rv2*124/1023;
+        mostrar_pwm(duty_cycle_valor, &buffer[0]);
+
         char lcd_buffer[17];
-        sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
+        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
         Lcd4_Set_Cursor(2,0);
         Lcd4_Write_String(lcd_buffer);
         changed_mode_flag = 0;
@@ -236,8 +279,11 @@ void showLCD_WM(uint16_t leds_time){
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("M: Normal T5:"); // Escribe string.
         
+				duty_cycle_valor = (long)v_rv2*124/1023;
+        mostrar_pwm(duty_cycle_valor, &buffer[0]);
+
         char lcd_buffer[17];
-        sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
+        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
         Lcd4_Set_Cursor(2,0);
         Lcd4_Write_String(lcd_buffer);
         changed_mode_flag = 0;
@@ -250,8 +296,14 @@ void showLCD_WM(uint16_t leds_time){
 
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("M: Normal T10:"); // Escribe string.
+        
+        duty_cycle_valor = (long)v_rv2*124/1023;
+        mostrar_pwm(duty_cycle_valor, &buffer[0]);
+
+        char lcd_buffer[17];
+        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String("DC: xx  T: xx s"); // Escribe string.
+        Lcd4_Write_String(lcd_buffer);
         changed_mode_flag = 0;
       }
     break;
@@ -259,27 +311,69 @@ void showLCD_WM(uint16_t leds_time){
 }
 
 
+
 // TIMERS 
 void timer0_config(){
-  TCCR0A = 0x02;									// Modo CTC.
-	TCCR0B = 0x03;									//(03 Hexa) Prescaler N = 64.
-	TIMSK0 = 0x02;									// Habilita interrupcion por comparacion en comparador A.
+  TCCR0A = 0b00000010;									// Modo CTC.
+	TCCR0B = 0b00000011;									//(03 Hexa) Prescaler N = 64.
+	TIMSK0 = 0b00000010;									// Habilita interrupcion por comparacion en comparador A.
 	OCR0A = TOP_T0;									 // Carga el valor de TOP con 249. T = (1+OCR0A)*N/16MHz = 1ms => OCR0A = TOPE = 249.
 };
 
 void timer2_config(){
-  TCCR2A = 0x23;									//(0x23 Hexa) Modo FAST PWN No invertido.
-	TCCR2B = 0x0C;									//(0x0c Hexa) Prescaler N = 64.
+  TCCR2A = 0b00100011;									//(0x23 Hexa) Modo FAST PWN No invertido.
+	TCCR2B = 0b00001100;									//(0x0c Hexa) Prescaler N = 64.
 	TIMSK2 = 0b00000010;						// Activa la interrupción por igualación en OC0A
 	OCR2A = TOP_T2;									// Carga el valor de TOP con 124. T = (1+OCR0A)*N/16MHz = 1ms => OCR0A = TOPE = 124.
-  OCR2B = 62;
+  OCR2B = 0;
 };
 
+
 void confCONVAD(){            // Configuracion ADC	
-  DIDR0 = 0b00001100;				  // Desconecta la parte digital del pin PC2/ADC2 y PC2/ADC2.
-	ADMUX = 0b01000010;				  // Config. la ref. de tension pin AVCC (placa Arduino AVCC = Vcc = 5V o 3V). CANAL INICIAL ADC2 (PC2)
-	ADCSRA = 0b10001111;				// preescaler=128, ADEN=1 y ADIE=1.
-  ADCSRB = 0b00000000;				// Modo free-running. Yo en mi otra interrupcion voy a ir consultando y actulizando mi variable glb ADC
+  DIDR0 = 0b00001100;     // Deshabilita buffers digitales ADC2 y ADC3
+  ADMUX = 0b01000011;     // Ref AVCC 5V ext capacitor, conversion 10 bits, Canal inicial 3
+
+  //fuente de inicio: conv auto timer0 compare match A
+  ADCSRB = 0b00000011;    
+  
+  // ADCSRA = 10101111 (0xAF)
+  ADCSRA = 0b10101111;// ADEN=1; ADSC=0; ADATE=1; ADIF=0; ADIE=1; PRE=128
+
+  // ==========================================
+  // " este bit debe ponerse a “1” para iniciar la primera conversión; luego de esto, el bit ADSC permanece en “1” de forma permanente."
+  // ==========================================
+  sbi(ADCSRA, ADSC);
+}
+
+ISR(ADC_vect){
+  //DEBUUUUG---------------------
+  timer_ADC++;
+  if(timer_ADC>=250){
+    PORTD ^= (1 << PD6);
+    timer_ADC=0;
+  }
+  //si 5 V = 1023
+  //   3 V =~ 613 
+  // la mitad de iluminosidad seria =~ 307 
+  //----------------------------
+  if(switch_channel==3){						// Si esta en el tercer canal tiene que leer el RV1
+    if(v_rv2 != ADC) changed_mode_flag = 1;
+    v_rv2 = ADC;					// Guarda la lectur del RV1	
+    ADMUX = (ADMUX & 0xF0) | 0x02;		// Limpia MUX y establece ADC2
+    switch_channel = 2;						// Seteo la bandera en el canal 2
+  } else {								// En el canal dos tiene que leer el LDR
+    if(v_ldr != ADC) changed_mode_flag = 1;
+    v_ldr = ADC;					// Guarda la lectura del LDR
+    ADMUX = (ADMUX & 0xF0) | 0x03;		// Limpia MUX y establece ADC3
+    switch_channel = 3;						// Setea la bandera en el canal 3
+  }
+    //pruebo que entra cada 1ms
+    sbi(PORTD,PD7);//Inicia conversion ADC  
+    cbi(PORTD,PD7);	//termina conversion ADC  
+}
+
+ISR (TIMER2_COMPA_vect){
+  OCR2B = duty_cycle_valor;
 }
 
 //Servicio de (INT 0) Interrupcion externa para P1
@@ -297,23 +391,32 @@ ISR(INT0_vect) {
 
 //Sirvicio de interrupcion TIMER 0
 ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrumpe cada 1 ms).
-  if(time_on_leds>0){
-    time_on_leds--;
-  }
-
+  
+  // DEBUUUUG
+  //pruebo que entra cada 1ms
   timer_ADC++;
-  if(timer_ADC >= 250){
+  if(timer_ADC>=250){
+    PORTD ^= (1 << PD7);
     timer_ADC=0;
-		ADMUX &= 0b11110010;		// Selecciona el canal 2 del ADC, sin modificar el resto de los bits de ADMUX.
-    while(is_high(ADCSRA,ADSC))	// Espera a que finalice la conversion actual, esta finaliza cuando el bit ADSC retorna a 0
-			{};
-    v_ldr = ADC;
-		ADMUX &= 0b11110011;		// Selecciona el canal 3 del ADC, sin modificar el resto de los bits de ADMUX.
-    while(is_high(ADCSRA,ADSC))	// Espera a que finalice la conversion actual, esta finaliza cuando el bit ADSC retorna a 0
-			{};
-    v_rv2 = ADC;
-    ADC_flag = 1;
   }
+  
+  PORTD = 0b00100000; // leds baliza ON
+  
+  //CONTADOR DE ms DE LOS MODOS
+  if(baliza_flag){
+    if(time_on_leds>0){
+      time_on_leds--;
+      changed_mode_flag=1; //permito actualizar el display en cada disminucion de tiempo
+      if(time_on_leds==1){
+        baliza_flag = 0;
+        time_leds_end = 1;
+      }
+    }
+  }
+  if(time_leds_end){
+    changed_mode_flag=1; //permito actualizar el display para apagarlo despues de terminar el timer de los modos
+  }
+  
 
   if(P1_debounce){
     timer_P1_debounce++;
@@ -328,14 +431,30 @@ ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrump
       // -----------------------------------------------------------------------------------------------
       if (is_high(PIND, P1_ON_OFF)){
         if(!config_mode) { // Tu restricción: solo fuera de config
+            if(!baliza_flag){
+              switch (operation_mode){
+                case 0:
+                  // recardo el tiempo
+                  time_on_leds = 3000; //se prende durante 3 seg posterior a estimulo y se apagara luego
+                break;
+                case 1:
+                  // recardo el tiempo
+                  time_on_leds = 3000; //se prende durante 5 seg posterior a estimulo y se apagara luego
+                break;
+                  case 2:
+                  // recardo el tiempo
+                  time_on_leds = 5000; //se prende durante 10 seg posterior a estimulo y se apagara luego
+                break;
+                case 3:
+                  // recardo el tiempo
+                  time_on_leds = 10000; //se prende durante 3 seg posterior a estimulo y se apagara luego
+                break;
+              }
+            }
             baliza_flag = !baliza_flag;
             changed_mode_flag = 1;
             P1_in_out_flag = 0;
-            if(baliza_flag){
-                PORTD = 0b00100000; // leds baliza ON
-            } else {
-                PORTD = 0b00000000; // leds baliza OFF
-            }
+            
         }
         P1_debounce = 0;						// reset flag antirebote
         EIMSK |= (1 << INT0);								// vuelvo a habilitar "SOLO!!" interrupcion INT0
@@ -351,16 +470,14 @@ ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrump
         
         config_mode = !config_mode;
         changed_mode_flag=1;
+        baliza_flag = 0; // siempre la pongo en 0 al entrar o salir para que el usuario inicie manualmente
 
-        /* if(changed_mode_flag){
-          PORTD = 0b00100000; // leds baliza ON
-          _delay_ms(200);
-          PORTD = 0b00000000; // leds baliza OFF
-        } */
       }
     }
   }
 }
+
+
 
 // PROGRAMA PRINCIPAL
 //-----------------------------------------------------------------------------------------------
@@ -368,8 +485,10 @@ int main(void){
   // INICIALIZACION
   //-----------------------------------------------------------------------------------------------
     pinesConfig();
-    startupSequence();
+    /* startupSequence(); */
+    confCONVAD(); //soy un pelotudo, me habia olvidado de ponerlo en el main
     timer0_config();
+    timer2_config();
     Lcd4_Init();				// Inicializa el LCD (debe estar antes de escribir x 1ra vez en el LCD).
     inicioLCD();				// Inicializa el LCD (siempre debe estar antes de usar el LCD).
     Lcd4_Clear();				// Borra el display.
@@ -436,7 +555,6 @@ int main(void){
       //MODO BALIZA (entra por defecto)
       //-----------------------------------------------------------------------------------------------
       if(!config_mode){     
-        
         //Si activo la baliza puedo dejar actuar a cada modo
         if(baliza_flag){
           PORTD = 0b00100000; // leds baliza ON
@@ -451,6 +569,7 @@ int main(void){
             Lcd4_Write_String("Baliza Apagada ...");
             Lcd4_Set_Cursor(2,0);
             changed_mode_flag=0;
+            time_leds_end=0;
           } 
         }
       }   
