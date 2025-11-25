@@ -80,7 +80,7 @@ volatile uint16_t duty_cycle_valor = 0;
 volatile uint16_t timer_ADC = 0; //contador para actualizar el valor medido por el ADC
 
 volatile uint16_t config_mode = 0; //por defecto no entra en config mode
-volatile uint16_t operation_mode = 2; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
+volatile uint16_t operation_mode = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
 volatile uint16_t time_on_leds = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
 volatile uint16_t time_leds_end = 0; //
 
@@ -154,7 +154,7 @@ void showLCD_config(uint16_t leds_time){
         /* _delay_ms(250); */		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: Auto  "); // Escribe string.
+        Lcd4_Write_String("Selected M: Auto  "); // Escribe string.
         Lcd4_Set_Cursor(2,0);
         Lcd4_Write_String("                "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
         
@@ -172,7 +172,7 @@ void showLCD_config(uint16_t leds_time){
         /* _delay_ms(250); */		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: N-OnOFf   "); // Escribe string.
+        Lcd4_Write_String("Selected - On/Off   "); // Escribe string.
         Lcd4_Set_Cursor(2,0);
         Lcd4_Write_String("                "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
         
@@ -187,7 +187,7 @@ void showLCD_config(uint16_t leds_time){
         _delay_ms(250);		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: N-T5      "); // Escribe string.
+        Lcd4_Write_String("Selected M: N-T5      "); // Escribe string.
         mostrar_tiempo(5000, tiempo_temp);
         Lcd4_Set_Cursor(2,0);
         /* Lcd4_Write_String("T -> "); // Escribe string. */
@@ -204,7 +204,7 @@ void showLCD_config(uint16_t leds_time){
         _delay_ms(250);		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: N-T10    "); // Escribe string.
+        Lcd4_Write_String("Selected M: N-T10    "); // Escribe string.
         mostrar_tiempo(10000, tiempo_temp);
         Lcd4_Set_Cursor(2,0);
         /* Lcd4_Write_String("T -> "); // Escribe string. */
@@ -227,29 +227,6 @@ void showLCD_config(uint16_t leds_time){
 
 void showLCD_WM(uint16_t leds_time){
   //con esto busco comparar señales de luz y sombra y compararlas con estados anteriores
-  /* v_ldr_antes = v_ldr; */
-  /* if(v_ldr < 307){
-    ldr_flag_before = ldr_flag_actual;
-    ldr_flag_actual = 1;
-    changed_mode_flag = 1;
-  } */
-
-  /* if(v_ldr < 307){
-    if(ldr_flag_actual){
-      ldr_flag_actual = 0;
-    }else{
-      ldr_flag_actual= 1;
-    }
-    changed_mode_flag = 1;
-  }  */
-
-  
-  
-  /* else{
-    ldr_flag_before = ldr_flag_actual;
-    ldr_flag_actual = 0;
-    changed_mode_flag = 1;
-  } */
     
     switch (operation_mode){
       case 0:// MODO AUTOMATICO
@@ -268,19 +245,19 @@ void showLCD_WM(uint16_t leds_time){
       break;
 
       case 1: //ON-OFF
-      if(v_ldr < 307){
-        if(ldr_flag_actual){
+        if(v_ldr < 560){
+          ldr_flag_before = ldr_flag_actual;
           ldr_flag_actual = 0;
-        }else{
-          ldr_flag_actual= 1;
+        } else{
+          ldr_flag_before = ldr_flag_actual;
+          ldr_flag_actual = 1;
         }
-        changed_mode_flag = 1;
-      } 
 
-      if(ldr_flag_actual != ldr_flag_before){
-        T_ON_Flag = !T_ON_Flag;  
-        ldr_flag_before = ldr_flag_actual;
-      }
+        if(ldr_flag_actual== 1 && ldr_flag_before==0){
+          T_ON_Flag = !T_ON_Flag;  
+
+          ldr_flag_before = ldr_flag_actual;
+        }
 
   
         if(T_ON_Flag){//MODO ON
@@ -311,28 +288,6 @@ void showLCD_WM(uint16_t leds_time){
       break;
 
       case 2: // MODO T5 
-        /* if(v_ldr < 307){
-            ldr_flag_actual = 0;
-            changed_mode_flag = 1;
-        } else ldr_flag_actual = 1; */
-
-        /* if(ldr_flag_actual != ldr_flag_before){
-          T_ON_Flag = !T_ON_Flag;  
-          time_on_leds = 5000;
-          ldr_flag_before = ldr_flag_actual;
-          changed_mode_flag = 1;
-        } */
-
-        /* if(v_ldr < 307){
-        if(ldr_flag_actual){
-          ldr_flag_actual = 0;
-        }else{
-          ldr_flag_actual= 1;
-          time_on_leds = 5000;
-        }
-          changed_mode_flag = 1;
-        }  */
-
         if(v_ldr < 307){
           ldr_flag_before = ldr_flag_actual;
           ldr_flag_actual = 0;
@@ -342,7 +297,8 @@ void showLCD_WM(uint16_t leds_time){
         }
 
         if(ldr_flag_actual== 1 && ldr_flag_before==0){
-          T_ON_Flag = !T_ON_Flag;  
+          /* T_ON_Flag = !T_ON_Flag;  */ 
+          T_ON_Flag = 1; 
           if(T_ON_Flag){
             time_on_leds = 5000;
           }
@@ -390,7 +346,8 @@ void showLCD_WM(uint16_t leds_time){
         }
 
         if(ldr_flag_actual== 1 && ldr_flag_before==0){
-          T_ON_Flag = !T_ON_Flag;  
+          /* T_ON_Flag = !T_ON_Flag;  */ 
+          T_ON_Flag = 1;
           if(T_ON_Flag){
             time_on_leds = 10000;
           }
