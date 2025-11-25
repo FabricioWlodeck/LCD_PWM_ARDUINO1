@@ -57,6 +57,12 @@ char tiempo_temp[10];
 volatile uint16_t switch_channel = 3;
 
 volatile uint16_t v_ldr = 0; //c
+volatile uint16_t ldr_flag_before = 0; //c
+volatile uint16_t ldr_flag_actual = 0; //c
+volatile uint16_t ldr_flag_ON = 0; //c
+volatile uint16_t T_5_10_BFlag = 0; //c
+
+
 
 volatile uint16_t v_rv2 = 0; //c
 
@@ -69,7 +75,7 @@ volatile uint16_t config_mode = 0; //por defecto no entra en config mode
 volatile uint16_t operation_mode = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
 volatile uint16_t time_on_leds = 0; //varia entre 0-1-2-3 Autom-NOnOff-NT5-NT10
 volatile uint16_t time_leds_end = 0; //
-volatile uint16_t pwm_value = 0;
+
 
 
 volatile uint16_t changed_mode_flag = 1; //flag para saber cuando actulizar display AUXXX
@@ -102,21 +108,6 @@ void pinesConfig(){
 
 };
 
-void startupSequence(){
-  PORTD = 0b00000000; //pongo todo en 0 primero por si acaso
-
-  PORTD = 0b00100000; //prendo el transistor de los leds
-  _delay_ms(500);
-
-  PORTD = 0b00000000; // Apago para el transistor de los leds
-  _delay_ms(500);
-
-  PORTD = 0b00100000; //prendo el transistor de los leds
-  _delay_ms(500);
-
-  PORTD = 0b00000000; // Apago para el transistor de los leds
-  _delay_ms(500);
-};
 
 void inicioLCD()						// ESCRITURA INICIAL EN LCD
 {	Lcd4_Set_Cursor(1,0);				// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
@@ -124,7 +115,7 @@ void inicioLCD()						// ESCRITURA INICIAL EN LCD
 	Lcd4_Set_Cursor(2,0);				// Posiciona cursor en fila 2 (de 2), columna 0 (de 16).
 	Lcd4_Write_Char('O');				// Escribe caracter
 	Lcd4_Write_Char('K');				// Escribe caracter
-	_delay_ms(500);					// Retarda x s.
+	_delay_ms(250);					// Retarda x ms.
 	Lcd4_Clear();						// Borra el display.
 
   Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
@@ -132,20 +123,20 @@ void inicioLCD()						// ESCRITURA INICIAL EN LCD
   Lcd4_Set_Cursor(2,0);
   Lcd4_Write_String("Baliza LED"); // Escribe string.
 
-  _delay_ms(500);		// Retarda x s.
+  _delay_ms(250);		// Retarda x s.
   Lcd4_Clear();			// Borra el display.
-  _delay_ms(500);		// Retarda x s.
+  /* _delay_ms(500); */		// Retarda x s.
 }
 
 
 void mostrar_tiempo(int x,char *y){
 	float xseg = (float)x/1000;
-	sprintf(y, "%.2fs", xseg);
+	sprintf(y, "T:%.2fs", xseg);
 }
-void mostrar_pwm(int x, char *y){		
+void mostrar_DC(int x, char *y){		
 	float xpor = (float)x*100/124;
 	if(xpor>100) xpor = 100;
-	sprintf(y,"PWM al %.2f%%", xpor);		
+	sprintf(y,"DC:%.2f%% ", xpor);		
 }
 
 
@@ -153,164 +144,210 @@ void showLCD_config(uint16_t leds_time){
   switch (operation_mode){
     case 0:
       if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
+       /*  Lcd4_Clear();			// Borra el display. */
+        /* _delay_ms(250); */		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: Auto"); // Escribe string.
+        Lcd4_Write_String("Select M: Auto  "); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("                "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
         
-        char lcd_buffer[17];
+        /* char lcd_buffer[17];
         sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
+        Lcd4_Write_String(lcd_buffer); */
         changed_mode_flag = 0;
       }
     break;
 
     case 1:
       if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
+       /*  Lcd4_Clear();			// Borra el display. */
+        /* _delay_ms(250); */		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: N-OnOFf"); // Escribe string.
+        Lcd4_Write_String("Select M: N-OnOFf   "); // Escribe string.
+        Lcd4_Set_Cursor(2,0);
+        Lcd4_Write_String("                "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
         
-        char lcd_buffer[17];
+        /* char lcd_buffer[17];
         sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
+        Lcd4_Write_String(lcd_buffer); */
         changed_mode_flag = 0;
       }
     break;
 
     case 2:
     if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
+        /* Lcd4_Clear();			// Borra el display. */
         _delay_ms(250);		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("Select M: N-T5"); // Escribe string.
-        
-        
-        char lcd_buffer[17];
+        Lcd4_Write_String("Select M: N-T5      "); // Escribe string.
+        mostrar_tiempo(5000, tiempo_temp);
+        Lcd4_Set_Cursor(2,0);
+        /* Lcd4_Write_String("T -> "); // Escribe string. */
+        Lcd4_Write_String(tiempo_temp);
+        Lcd4_Write_String("      "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+        /* char lcd_buffer[17];
         sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
+        Lcd4_Write_String(lcd_buffer); */
         changed_mode_flag = 0;
       }
     break;
     case 3:
     if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
+        /* Lcd4_Clear();			// Borra el display. */
         _delay_ms(250);		// Retarda 250 ms.
         
         Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+        Lcd4_Write_String("Select M: N-T10    "); // Escribe string.
+        mostrar_tiempo(10000, tiempo_temp);
+        Lcd4_Set_Cursor(2,0);
+        /* Lcd4_Write_String("T -> "); // Escribe string. */
+        Lcd4_Write_String(tiempo_temp);
+        Lcd4_Write_String("       "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+
+        /* Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
         Lcd4_Write_String("Select M: N-T10"); // Escribe string.
         
         char lcd_buffer[17];
         sprintf(lcd_buffer, "DC: %u  T: %u s", duty_cycle_valor, leds_time);
         Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
+        Lcd4_Write_String(lcd_buffer); */
         changed_mode_flag = 0;
       }
     break;
   }
 };
 
- void showLCD_WM(uint16_t leds_time){
-  switch (operation_mode){
-    case 0:
-      if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
-        
-        /* Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("M: Automatico:"); // Escribe string.
-
-        duty_cycle_valor = (long)v_rv2*124/1023;
-        mostrar_pwm(duty_cycle_valor, &buffer[0]);
-
-        
-        Lcd4_Write_String("T: ");
-				mostrar_tiempo(leds_time, tiempo_temp);
-        Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(buffer);
-				Lcd4_Write_String(tiempo_temp); */
-
-        Lcd4_Set_Cursor(1,0);
-        Lcd4_Write_String("T5 ON -> ");
-        mostrar_tiempo(leds_time, tiempo_temp);
-        Lcd4_Set_Cursor(1,9);
-        Lcd4_Write_String(tiempo_temp);
-        duty_cycle_valor = (long)v_rv2*124/1023;
-        mostrar_pwm(duty_cycle_valor, &buffer[0]);
-        Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(buffer);
-        _delay_ms(100);
-        duty_cycle_valor = 0;        
-        changed_mode_flag = 0;
-      }
-    break;
-
-    case 1:
-      if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
-
-        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("M: Normal On-Off:"); // Escribe string.
-        
-        duty_cycle_valor = (long)v_rv2*124/1023;
-        mostrar_pwm(duty_cycle_valor, &buffer[0]);
-
-        char lcd_buffer[17];
-        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
-        Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
-        changed_mode_flag = 0;
-      }
-    break;
-
-    case 2:
-      if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
-
-        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("M: Normal T5:"); // Escribe string.
-        
-				duty_cycle_valor = (long)v_rv2*124/1023;
-        mostrar_pwm(duty_cycle_valor, &buffer[0]);
-
-        char lcd_buffer[17];
-        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
-        Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
-        changed_mode_flag = 0;
-      }
-    break;
-    case 3:
-      if(changed_mode_flag){
-        Lcd4_Clear();			// Borra el display.
-        _delay_ms(250);		// Retarda 250 ms.
-
-        Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
-        Lcd4_Write_String("M: Normal T10:"); // Escribe string.
-        
-        duty_cycle_valor = (long)v_rv2*124/1023;
-        mostrar_pwm(duty_cycle_valor, &buffer[0]);
-
-        char lcd_buffer[17];
-        sprintf(lcd_buffer, "%s T:%us", buffer, leds_time);
-        Lcd4_Set_Cursor(2,0);
-        Lcd4_Write_String(lcd_buffer);
-        changed_mode_flag = 0;
-      }
-    break;
+void showLCD_WM(uint16_t leds_time){
+  //con esto busco comparar señales de luz y sombra y compararlas con estados anteriores
+  if(v_ldr > 307){
+    ldr_flag_before = ldr_flag_actual;
+    ldr_flag_actual = 1;
+  }else{
+    ldr_flag_before = ldr_flag_actual;
+    ldr_flag_actual = 0;
   }
+
+  /* while(baliza_flag){ */
+    /* PORTD ^= (1 << PD5); */
+    
+    switch (operation_mode){
+      case 0:// MODO AUTOMATICO
+        if(changed_mode_flag){ 
+          /* Lcd4_Clear();			// Borra el display.
+          _delay_ms(250);		// Retarda 250 ms. */
+          Lcd4_Set_Cursor(1,0);
+          Lcd4_Write_String("M-Auto          ");
+          /* mostrar_tiempo(leds_time, tiempo_temp);
+          Lcd4_Set_Cursor(1,9);
+          Lcd4_Write_String(tiempo_temp); */
+          duty_cycle_valor = (long)v_ldr*124/614;
+          mostrar_DC(duty_cycle_valor, &buffer[0]);
+          Lcd4_Set_Cursor(2,0);
+          Lcd4_Write_String(buffer);
+          Lcd4_Write_String("      "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+          _delay_ms(100);
+          changed_mode_flag = 0;
+        }
+      break;
+
+      case 1: //ON-OFF
+        if(ldr_flag_actual){//MODO ON
+          /* Lcd4_Clear();			// Borra el display.
+          _delay_ms(250);		// Retarda 250 ms. */
+
+          Lcd4_Set_Cursor(1,0);
+          Lcd4_Write_String("M-ON          ");
+          /* mostrar_tiempo(leds_time, tiempo_temp); */
+          Lcd4_Set_Cursor(1,9);
+          /* Lcd4_Write_String(tiempo_temp); */
+          duty_cycle_valor = (long)v_rv2*124/1023;
+          /* duty_cycle_valor = 124; // 100% */
+          mostrar_DC(duty_cycle_valor, &buffer[0]);
+          Lcd4_Set_Cursor(2,0);
+          Lcd4_Write_String(buffer);
+          Lcd4_Write_String("      "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+          _delay_ms(100);
+               
+          changed_mode_flag = 0;
+        }else{//MODO OFF
+          /* Lcd4_Clear();			// Borra el display.
+          _delay_ms(250);		// Retarda 250 ms. */
+
+          Lcd4_Set_Cursor(1,0);
+          Lcd4_Write_String("M-OFF         ");
+          /* mostrar_tiempo(leds_time, tiempo_temp); */
+          Lcd4_Set_Cursor(1,9);
+          /* Lcd4_Write_String(tiempo_temp); */
+          duty_cycle_valor = 0;
+          mostrar_DC(duty_cycle_valor, &buffer[0]);
+          Lcd4_Set_Cursor(2,0);
+          /* Lcd4_Write_String(buffer); */
+          Lcd4_Write_String("            "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+          _delay_ms(100);
+                
+          changed_mode_flag = 0;
+        }
+      break;
+
+      case 2: // MODO T5      
+        if(ldr_flag_actual){
+          if(changed_mode_flag){//SI HUBO UN CAMBIO EN EL SENSOR Y
+            
+            /* Lcd4_Clear();			// Borra el display.
+            _delay_ms(250);		// Retarda 250 ms. */
+
+            Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+            Lcd4_Write_String("M-T5->         "); // Escribe string.
+            mostrar_tiempo(leds_time, tiempo_temp);
+            Lcd4_Set_Cursor(1,9);
+            Lcd4_Write_String(tiempo_temp);
+            duty_cycle_valor = (long)v_rv2*124/1023;
+            mostrar_DC(duty_cycle_valor, &buffer[0]);
+            Lcd4_Set_Cursor(2,0);
+            Lcd4_Write_String(buffer);
+            Lcd4_Write_String("      "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+            _delay_ms(100);
+            changed_mode_flag = 0;
+          }
+        }       
+      break;
+
+      case 3: // MODO T10
+        if(ldr_flag_actual){
+          if(changed_mode_flag){
+            Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
+            Lcd4_Write_String("M-T10->         "); // Escribe string.
+            mostrar_tiempo(leds_time, tiempo_temp);
+            Lcd4_Set_Cursor(1,9);
+            Lcd4_Write_String(tiempo_temp);
+            duty_cycle_valor = (long)v_rv2*124/1023;
+            mostrar_DC(duty_cycle_valor, &buffer[0]);
+            Lcd4_Set_Cursor(2,0);
+            Lcd4_Write_String(buffer);
+            Lcd4_Write_String("      "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
+
+            _delay_ms(100);
+            changed_mode_flag = 0;
+          }
+        }
+       
+      break;
+    }
+  /* } */
+  
 }
-
-
 
 // TIMERS 
 void timer0_config(){
@@ -347,16 +384,18 @@ void confCONVAD(){            // Configuracion ADC
 
 ISR(ADC_vect){
   //DEBUUUUG---------------------
-  timer_ADC++;
+  /* timer_ADC++;
   if(timer_ADC>=250){
     PORTD ^= (1 << PD6);
     timer_ADC=0;
-  }
+  } */
+
+
   //si 5 V = 1023
   //   3 V =~ 613 
-  // la mitad de iluminosidad seria =~ 307 
+  // la mitad de iluminosidad seria maso =~ 307 
   //----------------------------
-  if(switch_channel==3){						// Si esta en el tercer canal tiene que leer el RV1
+  if(switch_channel==3){						// Si esta en el tercer canal tiene que leer el RV2
     if(v_rv2 != ADC) changed_mode_flag = 1;
     v_rv2 = ADC;					// Guarda la lectur del RV1	
     ADMUX = (ADMUX & 0xF0) | 0x02;		// Limpia MUX y establece ADC2
@@ -368,12 +407,41 @@ ISR(ADC_vect){
     switch_channel = 3;						// Setea la bandera en el canal 3
   }
     //pruebo que entra cada 1ms
-    sbi(PORTD,PD7);//Inicia conversion ADC  
-    cbi(PORTD,PD7);	//termina conversion ADC  
+    /* sbi(PORTD,PD7);//Inicia conversion ADC  
+    cbi(PORTD,PD7);	//termina conversion ADC   */
 }
 
 ISR (TIMER2_COMPA_vect){
-  OCR2B = duty_cycle_valor;
+  if(OCR2B != duty_cycle_valor){
+    changed_mode_flag = 1; //permito actualizar el display cada vez que se actualiza el valor del duty cycle
+  }
+  if(baliza_flag){
+    OCR2B = duty_cycle_valor;
+  }else{
+    OCR2B = 0;
+  }
+
+  if(duty_cycle_valor == 0 || baliza_flag == 0){
+        // CASO 0%: Apagado Total
+        
+        // 1. Desconectamos el pin OC2B del Timer
+        // (Ponemos el bit COM2B1 en 0)
+        TCCR2A &= ~(1 << COM2B1); 
+        
+        // 2. Forzamos el pin PD3 a BAJO manualmente
+        cbi(PORTD, PD3); 
+        
+    } else {
+        // CASO > 0%: Funcionamiento Normal PWM
+        
+        // 1. Reconectamos el pin OC2B al Timer
+        // (Ponemos el bit COM2B1 en 1)
+        TCCR2A |= (1 << COM2B1); 
+        
+        // 2. Actualizamos el valor
+        OCR2B = duty_cycle_valor;
+    }
+  
 }
 
 //Servicio de (INT 0) Interrupcion externa para P1
@@ -394,20 +462,26 @@ ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrump
   
   // DEBUUUUG
   //pruebo que entra cada 1ms
-  timer_ADC++;
+  /* timer_ADC++;
   if(timer_ADC>=250){
     PORTD ^= (1 << PD7);
     timer_ADC=0;
-  }
+  } */
   
-  PORTD = 0b00100000; // leds baliza ON
+  /* PORTD = 0b00100000; // leds baliza ON */
   
   //CONTADOR DE ms DE LOS MODOS
   if(baliza_flag){
     if(time_on_leds>0){
       time_on_leds--;
-      changed_mode_flag=1; //permito actualizar el display en cada disminucion de tiempo
+      /* changed_mode_flag=1; */ //permito actualizar el display en cada disminucion de tiempo
+      // Actualizar LCD solo cada 100ms para ver el tiempo correr suavemente
+      if(time_on_leds % 100 == 0){
+          changed_mode_flag = 1; 
+      }
+
       if(time_on_leds==1){
+        T_5_10_BFlag = 0;
         baliza_flag = 0;
         time_leds_end = 1;
       }
@@ -417,7 +491,7 @@ ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrump
     changed_mode_flag=1; //permito actualizar el display para apagarlo despues de terminar el timer de los modos
   }
   
-
+  //ANTIREBOTE DE P1
   if(P1_debounce){
     timer_P1_debounce++;
     if (timer_P1_debounce >= 10){
@@ -435,11 +509,11 @@ ISR (TIMER0_COMPA_vect){		// RSI por comparacion del Timer0 con OCR0A (interrump
               switch (operation_mode){
                 case 0:
                   // recardo el tiempo
-                  time_on_leds = 3000; //se prende durante 3 seg posterior a estimulo y se apagara luego
+                  time_on_leds = 0; //se prende durante 3 seg posterior a estimulo y se apagara luego
                 break;
                 case 1:
                   // recardo el tiempo
-                  time_on_leds = 3000; //se prende durante 5 seg posterior a estimulo y se apagara luego
+                  time_on_leds = 0; //se prende durante 5 seg posterior a estimulo y se apagara luego
                 break;
                   case 2:
                   // recardo el tiempo
@@ -498,7 +572,7 @@ int main(void){
     //BUCLE PRINCIPAL
     //-----------------------------------------------------------------------------------------------
     while(1){
-      
+      /* changed_mode_flag=1; */
       //MODO CONFIGURACION
       //-----------------------------------------------------------------------------------------------
       while(config_mode){
@@ -516,10 +590,11 @@ int main(void){
                 PORTD = 0b00100000; // leds baliza ON
                 _delay_ms(200);
                 PORTD = 0b00000000; // leds baliza OFF
-                time_on_leds = 3000; //se prende durante 3 seg posterior a estimulo y se apagara luego
+                time_on_leds = 0; //no tiene tiempo limite, va logleando segundo el usuario quiera
               break;
               case 1:
                 // CAMBIO A MODO T5
+                T_5_10_BFlag = 1; // con esto permitire no apagar la baliza durante el tiempo del modo
                 operation_mode = 2;
                 changed_mode_flag=1;
                 PORTD = 0b00100000; // leds baliza ON
@@ -529,6 +604,7 @@ int main(void){
               break;
                 case 2:
                 // CAMBIO A MODO T10
+                T_5_10_BFlag = 1; // con esto permitire no apagar la baliza durante el tiempo del modo
                 operation_mode = 3;
                 changed_mode_flag=1;
                 PORTD = 0b00100000; // leds baliza ON
@@ -543,7 +619,7 @@ int main(void){
                 PORTD = 0b00100000; // leds baliza ON
                 _delay_ms(200);
                 PORTD = 0b00000000; // leds baliza OFF
-                time_on_leds = 3000; //se prende durante 3 seg posterior a estimulo y se apagara luego
+                time_on_leds = 0; //se prende durante 3 seg posterior a estimulo y se apagara luego
               break;
             }
           }
@@ -561,17 +637,18 @@ int main(void){
           showLCD_WM(time_on_leds);
         }else{
           if(changed_mode_flag){
-            PORTD = 0b00000000; // leds baliza OFF
-            Lcd4_Clear();			// Borra el display.
+            /* PORTD = 0b00000000; // leds baliza OFF
+            Lcd4_Clear();			// Borra el display. */
             _delay_ms(250);		// Retarda 250 ms.
             
             Lcd4_Set_Cursor(1,0);	// Posiciona cursor en fila 1 (de 2), columna 0 (de 16).
             Lcd4_Write_String("Baliza Apagada ...");
             Lcd4_Set_Cursor(2,0);
+            Lcd4_Write_String("                "); // Limpia el resto de la línea asi no uso LCDCLEAR, parpadea si no
             changed_mode_flag=0;
             time_leds_end=0;
           } 
         }
       }   
-  }
+    }
 }
